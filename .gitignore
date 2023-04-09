@@ -1,0 +1,13 @@
+# Composer
+/vendor
+/composer.lock
+
+# PHPUnit
+/.phpunit.cache
+.phpunit.result.cache
+
+# MacOs
+.DS_Store
+
+# PHPStorm
+report.txt
