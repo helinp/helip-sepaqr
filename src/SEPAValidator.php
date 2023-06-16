@@ -185,7 +185,7 @@ class SEPAValidator
     }
 
     /**
-     * Controls the validity of a Belgian structured communication according to the ISO 11649 standard.
+     * Controls the validity of a Belgian structured communication.
      * @param string $communication
      * @return bool
      */
@@ -201,8 +201,7 @@ class SEPAValidator
         $mainPart = intval(substr($rawCommunication, 0, 10));
         $controlPart = intval(substr($rawCommunication, 10, 2));
 
-        $calculatedControlPart = $mainPart % 97 ?? 97;
-
+        $calculatedControlPart = intval(($mainPart % 97) ?: 97);
         return $controlPart === $calculatedControlPart;
     }
 
