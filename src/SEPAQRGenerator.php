@@ -1,26 +1,21 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Helip\SEPA;
 
-use chillerlan\QRCode\{QRCode, QROptions};
+use chillerlan\QRCode\{QRCode, QRCodeException, QROptions};
 use chillerlan\QRCode\Data\QRMatrix;
-use Helip\SEPA\SEPA;
+use Helip\SEPA\Encoder\SEPAQRTextEncoder;
+use InvalidArgumentException;
+use RuntimeException;
 
 /**
- * Class SEPAQR
- *
- * @package Helip\SEPAQR
- * @version 0.9.0
- * @license LGPL-3.0-only
- * @author pierre.helin@gmail.com
  * @link https://www.europeanpaymentscouncil.eu/sites/default/files/kb/file/2018-05/EPC069-12%20v2.1%20Quick%20Response%20Code%20-%20Guidelines%20to%20Enable%20the%20Data%20Capture%20for%20the%20Initiation%20of%20a%20SCT.pdf
  */
 class SEPAQRGenerator
 {
-    /**
-     * @var SEPA
-     */
-    private SEPA $sepa;
+    private SEPADto $sepa;
 
     /**
      * Defaults options for the QR code.
@@ -31,23 +26,18 @@ class SEPAQRGenerator
         'eccLevel'     => QRCode::ECC_M,
     ];
 
-    /**
-     * SEPAQR constructor.
-     *
-     * @param SEPA $sepa
-     */
-    public function __construct(SEPA $sepa)
+    public function __construct(SEPADto $sepa)
     {
         $this->sepa = $sepa;
     }
 
     /**
-     * Prints the QR code
+     * Render the QR code as a string in the console.
      *
      * @param string $plainCharacter
      * @param string $emptyCharacter
      */
-    public function print(string $plainCharacter = '██', string $emptyCharacter = '  ')
+    public function renderConsole(string $plainCharacter = '██', string $emptyCharacter = '  '): string
     {
         $options = [
             'outputType' => QRCode::OUTPUT_STRING_TEXT,
@@ -84,10 +74,15 @@ class SEPAQRGenerator
         );
 
         try {
-            print (new QRCode($qrOptions))->render($this->sepa->getText());
-        } catch (\Exception $e) {
+            return (new QRCode($qrOptions))->render($this->getEncodedText());
+        } catch (QRCodeException $e) {
             // Throw an exception if an error occurs during QR code generation
-            throw new \Exception('Error generating QR code: ' . $e->getMessage());
+            throw new RuntimeException(
+                sprintf(
+                    'Error generating QR code: %s',
+                    $e->getMessage()
+                )
+            );
         }
     }
 
@@ -98,7 +93,7 @@ class SEPAQRGenerator
      * @param string $fileName
      * @param int $scale The scale of the QR code. Default is 5.
      */
-    public function savePNG(string $path, string $fileName, int $scale = 5)
+    public function savePNG(string $path, string $fileName, int $scale = 5): SEPAQRGenerator
     {
         $options = [
             'outputType'   => QRCode::OUTPUT_IMAGE_PNG,
@@ -111,14 +106,30 @@ class SEPAQRGenerator
             array_merge($this->options, $options)
         );
 
-        $qrCode = (new QRCode($qrOptions))->render($this->sepa->getText());
+        $qrCode = (new QRCode($qrOptions))->render($this->getEncodedText());
 
-        try {
-            file_put_contents($path . $fileName, $qrCode);
-        } catch (\Exception $e) {
-            throw new \Exception('Error saving QR code: ' . $e->getMessage());
+        if (!is_dir($path) || !is_writable($path)) {
+            throw new RuntimeException(
+                sprintf(
+                    'Path %s is not a directory or is not writable.',
+                    $path
+                )
+            );
         }
 
+        // Ensure the path ends with a directory separator
+        $fullPath = rtrim($path, '/\\') . DIRECTORY_SEPARATOR . $fileName;
+        $result = @file_put_contents($fullPath, $qrCode);
+
+        if ($result === false) {
+            throw new RuntimeException(
+                sprintf(
+                    'Failed to save QR code to %s%s',
+                    $path,
+                    $fileName
+                )
+            );
+        }
         return $this;
     }
 
@@ -127,24 +138,34 @@ class SEPAQRGenerator
      *
      * @return string The raw PNG image data of the QR code.
      */
-    public function renderImage(int $scale = 5)
+    public function renderImage(int $scale = 5): string
     {
         $options = [
-            'outputType'   => QRCode::OUTPUT_IMAGE_PNG,
+            'outputType'       => QRCode::OUTPUT_IMAGE_PNG,
             'imageTransparent' => false,
-            'scale'        => $scale,
-            'imageBase64'  => false
+            'scale'            => $scale,
+            'imageBase64'      => false,
         ];
 
-        $qrOptions = new QROptions(
-            array_merge($this->options, $options)
-        );
+        $qrOptions = new QROptions(array_merge($this->options, $options));
+
+        // Facultatif : valider l’entrée
+        $encodedText = $this->getEncodedText();
+        if (!is_string($encodedText) || trim($encodedText) === '') {
+            throw new InvalidArgumentException(
+                'Encoded text must be a non-empty string.'
+            );
+        }
 
         try {
-            return (new QRCode($qrOptions))->render($this->sepa->getText());
-        } catch (\Exception $e) {
-            // Throw an exception if an error occurs during QR code generation
-            throw new \Exception('Error generating QR code: ' . $e->getMessage());
+            return (new QRCode($qrOptions))->render($encodedText);
+        } catch (QRCodeException $e) {
+            throw new RuntimeException(
+                sprintf(
+                    'Error generating QR code: %s',
+                    $e->getMessage()
+                )
+            );
         }
     }
 
@@ -156,10 +177,10 @@ class SEPAQRGenerator
      * @param string $logoPath
      * @param int $scale The scale of the QR code. Default is 5.
      */
-    public function saveImageWithLogo($path, $fileName, $logoPath = null, int $scale = 5)
+    public function saveImageWithLogo(string $path, string $fileName, string $logoPath, int $scale = 5): SEPAQRGenerator
     {
         if (!file_exists($logoPath)) {
-            throw new \Exception('Logo file not found');
+            throw new RuntimeException('File not found: ' . $logoPath);
         }
 
         $options = [
@@ -173,10 +194,17 @@ class SEPAQRGenerator
             array_merge($this->options, $options)
         );
 
-        $qrCode = (new QRCode($qrOptions))->render($this->sepa->getText());
+        $qrCode = (new QRCode($qrOptions))->render($this->getEncodedText());
 
-        $logoImage = imagecreatefrompng($logoPath);
-        $qrImage = imagecreatefromstring($qrCode);
+        $logoImage = @imagecreatefrompng($logoPath);
+        if ($logoImage === false) {
+            throw new RuntimeException("Could not create image from logo file: {$logoPath}");
+        }
+
+        $qrImage = @imagecreatefromstring($qrCode);
+        if ($qrImage === false) {
+            throw new RuntimeException("Could not create image from QR code data.");
+        }
 
         $logoWidth = imagesx($logoImage);
         $logoHeight = imagesy($logoImage);
@@ -203,10 +231,8 @@ class SEPAQRGenerator
             $logoHeight
         );
 
-        try {
-            imagepng($qrImage, $path . $fileName);
-        } catch (\Exception $e) {
-            throw new \Exception('Error saving PNG file: ' . $e->getMessage());
+        if (!imagepng($qrImage, $path . $fileName)) {
+            throw new RuntimeException("Error saving PNG file: {$path}{$fileName}");
         }
 
         return $this;
@@ -218,17 +244,34 @@ class SEPAQRGenerator
      * @param array $options (see chillerlan\QRCode\QROptions)
      * @return string The raw PNG image data of the QR code.
      */
-    public function customQr(array $options = [])
+    public function customQr(array $options = []): string
     {
-        $qrOptions = new QROptions(
-            array_merge($this->options, $options)
-        );
+        $encodedText = $this->getEncodedText();
+        if (!is_string($encodedText) || trim($encodedText) === '') {
+            throw new InvalidArgumentException('Encoded text must be a non-empty string.');
+        }
+
+        $qrOptions = new QROptions(array_merge($this->options, $options));
 
         try {
-            return (new QRCode($qrOptions))->render($this->sepa->getText());
-        } catch (\Exception $e) {
-            // Throw an exception if an error occurs during QR code generation
-            throw new \Exception('Error generating QR code: ' . $e->getMessage());
+            $result = (new QRCode($qrOptions))->render($encodedText);
+
+            if (!is_string($result) || $result === '' || $result === false) {
+                throw new RuntimeException('QR code rendering failed: output is empty or invalid');
+            }
+
+            return $result;
+        } catch (QRCodeException $e) {
+            throw new RuntimeException(
+                sprintf('Error generating QR code: %s', $e->getMessage())
+            );
         }
+    }
+
+
+
+    private function getEncodedText(): string
+    {
+        return SEPAQRTextEncoder::encode($this->sepa);
     }
 }

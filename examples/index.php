@@ -16,7 +16,8 @@ $sepa = new SEPA(
 echo $sepa->getText();
 
 // QR code as text
-$sepa->getQR()->print();
+echo $sepa->getQR()->renderConsole();
 
 // QR code as PNG
-$sepa->getQR()->savePNG('', 'qr.png');
+$sepa->getQR()->savePNG(__DIR__, 'qr.png');
+

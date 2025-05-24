@@ -12,7 +12,7 @@ Features
 
 Requirements
 ------------
-*   PHP 7.4 or higher
+*   PHP 8.1 or higher
 *   [chillerlan/php-qrcode](https://github.com/chillerlan/php-qrcode) ^4.3
 
 Installation
@@ -46,10 +46,6 @@ $sepa->getQR()->savePNG('path', 'qr.png');
 License
 -------
 SEPAQR is licensed under the [LGPL-3.0-only License](https://spdx.org/licenses/LGPL-3.0-only.html).
-
-Author
-------
-*   [pierre.helin@gmail.com](mailto:pierre.helin@gmail.com)
 
 References
 ----------
